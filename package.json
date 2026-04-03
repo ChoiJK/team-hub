@@ -1,0 +1,13 @@
+{
+  "name": "team-hub",
+  "version": "0.1.0",
+  "description": "Claude Code 세션 간 통신 허브 — Channel MCP 서버",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/hub.ts",
+    "mcp": "bun run src/mcp-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  }
+}

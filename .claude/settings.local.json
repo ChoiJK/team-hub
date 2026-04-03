@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__team-hub__team_send",
+      "mcp__team-hub__team_history",
+      "mcp__team-hub__team_members"
+    ]
+  }
+}
