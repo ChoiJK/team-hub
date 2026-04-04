@@ -71,32 +71,49 @@ async function setupWorktree(
   }
 
   if (!existsSync(worktreePath)) {
-    // git worktree 생성
+    const WORKTREE_TIMEOUT_MS = 30_000;
+
+    // git worktree 생성 (타임아웃 30초)
     await new Promise<void>((resolve, reject) => {
       let stderr = "";
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          proc.kill("SIGTERM");
+          reject(new Error(`worktree setup timed out after ${WORKTREE_TIMEOUT_MS / 1000}s`));
+        }
+      }, WORKTREE_TIMEOUT_MS);
+
       const proc = spawn(
         "git",
         ["worktree", "add", `agents/${agentId}`, "-b", `agent/${agentId}`, "main"],
         { cwd: projectPath }
       );
       proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
-      proc.on("error", (err) => reject(new Error(`worktree spawn error: ${err.message}`)));
+      proc.on("error", (err) => {
+        if (!settled) { settled = true; clearTimeout(timer); reject(new Error(`worktree spawn error: ${err.message}`)); }
+      });
       proc.on("close", (code) => {
-        if (code === 0) resolve();
-        else {
-          // 브랜치가 이미 있으면 -b 없이 재시도
-          let retryStderr = "";
-          const retry = spawn(
-            "git",
-            ["worktree", "add", `agents/${agentId}`, `agent/${agentId}`],
-            { cwd: projectPath }
-          );
-          retry.stderr?.on("data", (d: Buffer) => { retryStderr += d.toString(); });
-          retry.on("error", (err) => reject(new Error(`worktree retry spawn error: ${err.message}`)));
-          retry.on("close", (c) =>
-            c === 0 ? resolve() : reject(new Error(`worktree failed (code ${c}): ${retryStderr || stderr}`))
-          );
-        }
+        if (settled) return;
+        if (code === 0) { settled = true; clearTimeout(timer); resolve(); return; }
+
+        // 브랜치가 이미 있으면 -b 없이 재시도
+        let retryStderr = "";
+        const retry = spawn(
+          "git",
+          ["worktree", "add", `agents/${agentId}`, `agent/${agentId}`],
+          { cwd: projectPath }
+        );
+        retry.stderr?.on("data", (d: Buffer) => { retryStderr += d.toString(); });
+        retry.on("error", (err) => {
+          if (!settled) { settled = true; clearTimeout(timer); reject(new Error(`worktree retry spawn error: ${err.message}`)); }
+        });
+        retry.on("close", (c) => {
+          if (settled) return;
+          settled = true; clearTimeout(timer);
+          c === 0 ? resolve() : reject(new Error(`worktree failed (code ${c}): ${retryStderr || stderr}`));
+        });
       });
     });
   }
@@ -248,6 +265,13 @@ async function ensureAgentForRole(
     });
   } catch (e: any) {
     console.error(`Failed to auto-spawn agent ${agentId}:`, e.message);
+    broadcastSSE("agent-spawn-failed", { id: agentId, role, project, error: e.message });
+    addMessage({
+      from: "system",
+      to: "all",
+      content: `❌ ${role} 에이전트 자동 스폰 실패: ${agentId} — ${e.message}`,
+      project,
+    });
   }
 }
 
@@ -699,6 +723,23 @@ Bun.serve({
 
 console.log(`🌐 Team Hub running on http://0.0.0.0:${PORT}`);
 
+// ── Graceful Shutdown ──
+
+function shutdown() {
+  console.log("\n🛑 Team Hub 종료 중...");
+  for (const [id, proc] of agentProcesses) {
+    console.log(`  stopping ${id} (PID: ${proc.pid})`);
+    try { proc.process.kill("SIGTERM"); } catch {}
+    setAgentOffline(id);
+  }
+  agentProcesses.clear();
+  console.log("👋 Team Hub 종료 완료");
+  process.exit(0);
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
+
 // ── 대시보드 HTML ──
 
 const DASHBOARD_HTML = `<!DOCTYPE html>
@@ -846,6 +887,7 @@ es.addEventListener('task-updated',()=>load());
 es.addEventListener('task-stage-changed',()=>load());
 es.addEventListener('agent-spawned',()=>load());
 es.addEventListener('agent-stopped',()=>load());
+es.addEventListener('agent-spawn-failed',()=>load());
 
 load();
 setInterval(load,10000);

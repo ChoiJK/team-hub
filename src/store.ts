@@ -3,7 +3,7 @@
  * 에이전트 메모리, 메시지, 태스크, 빌드 잠금
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, renameSync } from "fs";
 import { join } from "path";
 
 const DATA_DIR = join(import.meta.dir, "..", "data");
@@ -99,7 +99,9 @@ function readJson<T>(path: string, fallback: T): T {
 }
 
 function writeJson(path: string, data: unknown) {
-  writeFileSync(path, JSON.stringify(data, null, 2), "utf-8");
+  const tmp = path + ".tmp";
+  writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
+  renameSync(tmp, path);
 }
 
 // ── 에이전트 ──
