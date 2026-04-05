@@ -41,7 +41,7 @@ const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 // ── 프로젝트 경로 설정 ──
 
 const PROJECT_PATHS: Record<string, string> = {
-  elt: "/mnt/d/Workspace/EnglishLearningToolkit",
+  elt: "D:/Workspace/EnglishLearningToolkit",
 };
 
 // ── 에이전트 프로세스 관리 ──
@@ -64,7 +64,8 @@ function getProjectPath(project: string): string | null {
 
 async function setupWorktree(
   projectPath: string,
-  agentId: string
+  agentId: string,
+  opts?: { role?: string; persona?: string; project?: string; rules?: string }
 ): Promise<string> {
   const agentsDir = join(projectPath, "agents");
   const worktreePath = join(agentsDir, agentId);
@@ -121,24 +122,25 @@ async function setupWorktree(
     });
   }
 
-  // .mcp.json 생성
+  // .mcp.json 생성 (항상 최신 설정으로 덮어쓰기)
   const mcpJsonPath = join(worktreePath, ".mcp.json");
-  if (!existsSync(mcpJsonPath)) {
-    const mcpConfig = {
-      mcpServers: {
-        "team-hub": {
-          command: "bun",
-          args: ["run", join(import.meta.dir, "mcp-server.ts")],
-          env: {
-            AGENT_ID: agentId,
-            AGENT_ROLE: agentId,
-            TEAM_HUB_URL: `http://127.0.0.1:${PORT}`,
-          },
+  const mcpConfig = {
+    mcpServers: {
+      "team-hub": {
+        command: "bun",
+        args: ["run", join(import.meta.dir, "mcp-server.ts")],
+        env: {
+          AGENT_ID: agentId,
+          AGENT_ROLE: opts?.role ?? agentId,
+          AGENT_PERSONA: opts?.persona ?? "",
+          PROJECT: opts?.project ?? "",
+          PROJECT_RULES: opts?.rules ?? "",
+          TEAM_HUB_URL: `http://127.0.0.1:${PORT}`,
         },
       },
-    };
-    writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
-  }
+    },
+  };
+  writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2), "utf-8");
 
   return worktreePath;
 }
@@ -149,71 +151,78 @@ function spawnAgent(
   project: string,
   worktreePath: string,
   initialPrompt: string,
-  model?: string
+  opts?: { model?: string; persona?: string; rules?: string }
 ): AgentProcess {
-  const args = [
-    "--print",
+  // claude 실행 인자 구성
+  const claudeArgs = [
     "--permission-mode", "bypassPermissions",
+    "--channels", "server:team-hub",
   ];
-  if (model) {
-    args.push("--model", model);
+  if (opts?.model) {
+    claudeArgs.push("--model", opts.model);
   }
-  args.push("-p", initialPrompt);
+  claudeArgs.push("-p", initialPrompt);
 
-  const proc = spawn("claude", args, {
+  // .bat 래퍼 생성 — 새 터미널 창에서 실행 + 종료 시 Hub 알림
+  const batPath = join(worktreePath, `_run-${agentId}.bat`);
+  const envLines = [
+    `set AGENT_ID=${agentId}`,
+    `set AGENT_ROLE=${role}`,
+    `set AGENT_PERSONA=${opts?.persona ?? ""}`,
+    `set PROJECT=${project}`,
+    `set PROJECT_RULES=${opts?.rules ?? ""}`,
+    `set TEAM_HUB_URL=http://127.0.0.1:${PORT}`,
+  ];
+  const batContent = [
+    "@echo off",
+    `title [${role}] ${agentId}`,
+    `cd /d "${worktreePath.replace(/\//g, "\\")}"`,
+    ...envLines,
+    `claude ${claudeArgs.join(" ")}`,
+    `echo.`,
+    `echo === Agent ${agentId} exited ===`,
+    `curl -s -X POST http://127.0.0.1:${PORT}/api/agents/offline -H "Content-Type: application/json" -d "{\\"id\\":\\"${agentId}\\"}" >nul 2>&1`,
+  ].join("\r\n") + "\r\n";
+  writeFileSync(batPath, batContent, "utf-8");
+
+  // 새 터미널 창으로 실행
+  const proc = spawn("cmd", ["/c", "start", `[${role}] ${agentId}`, "cmd", "/c", batPath], {
     cwd: worktreePath,
-    stdio: ["pipe", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      AGENT_ID: agentId,
-      AGENT_ROLE: role,
-      PROJECT: project,
-    },
+    stdio: "ignore",
+    detached: true,
+    env: process.env,
   });
 
-  if (!proc.pid) {
-    throw new Error(`Failed to spawn agent process: pid is undefined`);
-  }
+  // detached 프로세스는 부모와 분리
+  proc.unref();
 
-  const MAX_LOG_LINES = 50;
   const agentProc: AgentProcess = {
-    pid: proc.pid,
+    pid: proc.pid ?? 0,
     process: proc,
     project,
     role,
     worktreePath,
     startedAt: new Date().toISOString(),
-    logBuffer: [],
+    logBuffer: [`[${new Date().toISOString()}] Agent spawned in new terminal window`],
   };
-
-  // 프로세스 종료 감지
-  proc.on("close", (code) => {
-    agentProcesses.delete(agentId);
-    setAgentOffline(agentId);
-    broadcastSSE("agent-stopped", { id: agentId, code });
-  });
-
-  // stdout → 로그 버퍼에 저장 (broadcast 하지 않음)
-  proc.stdout?.on("data", (data: Buffer) => {
-    const lines = data.toString().split("\n").filter((l) => l.trim());
-    for (const line of lines) {
-      agentProc.logBuffer.push(line);
-      if (agentProc.logBuffer.length > MAX_LOG_LINES) {
-        agentProc.logBuffer.shift();
-      }
-    }
-  });
 
   agentProcesses.set(agentId, agentProc);
   return agentProc;
 }
 
 function stopAgent(agentId: string): boolean {
-  const proc = agentProcesses.get(agentId);
-  if (!proc) return false;
+  const agent = agentProcesses.get(agentId);
+  if (!agent) return false;
 
   try {
-    proc.process.kill("SIGTERM");
+    // 터미널 창의 claude 프로세스를 찾아서 종료
+    // 윈도우 타이틀 기반 + taskkill
+    const role = agent.role;
+    const title = `[${role}] ${agentId}`;
+    spawn("cmd", ["/c", `taskkill /F /FI "WINDOWTITLE eq ${title}"`], {
+      stdio: "ignore",
+      detached: true,
+    }).unref();
   } catch {}
 
   agentProcesses.delete(agentId);
@@ -252,11 +261,11 @@ async function ensureAgentForRole(
 
   const agentId = `${role}-${project}`;
   try {
-    const worktreePath = await setupWorktree(projectPath, agentId);
+    const worktreePath = await setupWorktree(projectPath, agentId, { role, project });
     const initialPrompt = `CLAUDE.md를 읽고 task_my_tasks 도구로 할당된 태스크를 확인해. 태스크 [${task.id}] ${task.title}이(가) 할당되었으니 작업을 시작해.`;
 
-    spawnAgent(agentId, role, project, worktreePath, initialPrompt);
-    registerAgent(agentId, role, project);
+    spawnAgent(agentId, role, project, worktreePath, initialPrompt, {});
+    registerAgent(agentId, role, project, {});
     updateTask(task.id, { assignee: agentId });
 
     broadcastSSE("agent-spawned", { id: agentId, role, project });
@@ -621,7 +630,7 @@ Bun.serve({
             );
           }
 
-          const { agentId, role, model, initialPrompt } = await req.json();
+          const { agentId, role, model, persona, rules, initialPrompt } = await req.json();
           if (!agentId || !role) {
             return Response.json(
               { error: "agentId and role are required" },
@@ -644,13 +653,16 @@ Bun.serve({
             );
           }
 
-          const worktreePath = await setupWorktree(projectPath, agentId);
+          const worktreePath = await setupWorktree(projectPath, agentId, { role, persona, project, rules });
           const prompt =
             initialPrompt ??
             "CLAUDE.md를 읽고 task_list로 태스크를 확인해. 할당된 태스크가 있으면 작업 시작해.";
 
-          const agentProc = spawnAgent(agentId, role, project, worktreePath, prompt, model);
-          const agent = registerAgent(agentId, role, project);
+          const agentProc = spawnAgent(agentId, role, project, worktreePath, prompt, { model, persona, rules });
+          const agent = registerAgent(agentId, role, project, {
+            harnessVersion: undefined,  // mcp-server가 등록 시 자동 설정
+            persona: persona ?? undefined,
+          });
 
           logEvent("agent-spawned", agentId, project, { role, pid: agentProc.pid, worktreePath });
           broadcastSSE("agent-spawned", { ...agent, pid: agentProc.pid, worktreePath });
