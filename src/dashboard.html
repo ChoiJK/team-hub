@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Team Hub</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh}
+.header{background:#161b22;border-bottom:1px solid #30363d;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+.header h1{font-size:20px}
+.header-right{display:flex;align-items:center;gap:16px;font-size:13px;color:#8b949e}
+.container{max-width:1400px;margin:0 auto;padding:24px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+@media(max-width:1024px){.container{grid-template-columns:1fr 1fr}}
+@media(max-width:768px){.container{grid-template-columns:1fr}}
+.panel{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px}
+.panel h2{font-size:13px;color:#8b949e;margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;display:flex;justify-content:space-between;align-items:center}
+.panel h2 .count{background:#21262d;padding:2px 8px;border-radius:10px;font-size:11px}
+.full-width{grid-column:1/-1}
+
+/* Agents */
+.agent-card{display:flex;align-items:center;gap:8px;padding:10px;border-radius:8px;margin-bottom:6px;background:#0d1117}
+.agent-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.agent-dot.online{background:#3fb950}
+.agent-dot.offline{background:#6e7681}
+.agent-info{flex:1;min-width:0}
+.agent-name{font-weight:600;font-size:14px}
+.agent-meta{font-size:11px;color:#8b949e;margin-top:2px}
+.agent-badges{display:flex;gap:4px;flex-shrink:0}
+.badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600}
+.badge.role{background:#21262d;color:#8b949e}
+.badge.level{background:#0c2d6b;color:#58a6ff}
+
+/* Tasks */
+.task-card{padding:10px;border-radius:8px;margin-bottom:8px;background:#0d1117;border-left:3px solid #30363d}
+.task-card.backlog{border-left-color:#6e7681}
+.task-card.research{border-left-color:#a371f7}
+.task-card.spec{border-left-color:#d2a8ff}
+.task-card.implement{border-left-color:#58a6ff}
+.task-card.review{border-left-color:#e3b341}
+.task-card.revision{border-left-color:#f85149}
+.task-card.done{border-left-color:#3fb950}
+.task-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.task-title{font-size:14px;font-weight:600;flex:1}
+.task-stage-badge{font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;white-space:nowrap}
+.task-stage-badge.backlog{background:#21262d;color:#8b949e}
+.task-stage-badge.research{background:#2d1b69;color:#a371f7}
+.task-stage-badge.spec{background:#2d1b69;color:#d2a8ff}
+.task-stage-badge.implement{background:#0c2d6b;color:#58a6ff}
+.task-stage-badge.review{background:#3d2e00;color:#e3b341}
+.task-stage-badge.revision{background:#3d1114;color:#f85149}
+.task-stage-badge.done{background:#0d3117;color:#3fb950}
+.task-meta{font-size:12px;color:#8b949e;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap}
+.task-pipeline{display:flex;gap:2px;margin-top:8px}
+.task-pipeline .step{flex:1;height:4px;border-radius:2px;background:#21262d}
+.task-pipeline .step.active{background:#58a6ff}
+.task-pipeline .step.done{background:#3fb950}
+.task-pipeline .step.revision-hit{background:#f85149}
+.task-history{margin-top:6px;font-size:11px;color:#6e7681}
+.task-history .rev-reason{color:#f85149;font-style:italic}
+
+/* Build */
+.build-status{padding:12px;border-radius:8px;text-align:center;font-size:14px}
+.build-status.locked{background:#3d1114;color:#f85149;border:1px solid #f8514966}
+.build-status.free{background:#0d3117;color:#3fb950;border:1px solid #3fb95066}
+
+/* Messages */
+.msg{padding:8px;border-radius:8px;margin-bottom:6px;background:#0d1117;font-size:13px}
+.msg .from{color:#58a6ff;font-weight:600}
+.msg .time{color:#6e7681;font-size:11px;float:right}
+.msg .content{margin-top:4px;line-height:1.4}
+.msg.system{border-left:3px solid #e3b341}
+
+/* Events */
+.event-item{padding:6px 8px;border-radius:6px;margin-bottom:4px;background:#0d1117;font-size:12px;display:flex;gap:8px;align-items:center}
+.event-icon{width:20px;text-align:center;flex-shrink:0}
+.event-text{flex:1;color:#c9d1d9}
+.event-time{color:#6e7681;font-size:11px;flex-shrink:0}
+.event-item.task{border-left:2px solid #58a6ff}
+.event-item.agent{border-left:2px solid #3fb950}
+.event-item.review{border-left:2px solid #e3b341}
+.event-item.build{border-left:2px solid #a371f7}
+
+/* Scorecard */
+.scorecard{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+.stat-box{background:#0d1117;border-radius:8px;padding:10px;text-align:center}
+.stat-value{font-size:20px;font-weight:700;color:#e1e4e8}
+.stat-label{font-size:11px;color:#8b949e;margin-top:2px}
+
+.empty{color:#6e7681;font-size:13px;text-align:center;padding:20px}
+.tab-bar{display:flex;gap:4px;margin-bottom:12px}
+.tab{padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;background:#21262d;color:#8b949e;border:none}
+.tab.active{background:#0c2d6b;color:#58a6ff}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>🤝 Team Hub</h1>
+<div class="header-right">
+<span id="status">연결 중...</span>
+<span>·</span>
+<span id="clock"></span>
+</div>
+</div>
+<div class="container">
+
+<div class="panel">
+<h2>🔨 빌드 <span class="count" id="build-label"></span></h2>
+<div id="build"></div>
+<h2 style="margin-top:16px">👥 팀원 <span class="count" id="agent-count"></span></h2>
+<div id="agents"></div>
+</div>
+
+<div class="panel">
+<h2>📋 태스크 <span class="count" id="task-count"></span></h2>
+<div class="tab-bar" id="task-tabs">
+<button class="tab active" data-filter="active" onclick="filterTasks('active')">진행 중</button>
+<button class="tab" data-filter="all" onclick="filterTasks('all')">전체</button>
+<button class="tab" data-filter="done" onclick="filterTasks('done')">완료</button>
+</div>
+<div id="tasks"></div>
+</div>
+
+<div class="panel">
+<h2>📊 스코어보드</h2>
+<div id="scoreboard"></div>
+<h2 style="margin-top:16px">⚡ 이벤트 <span class="count" id="event-count"></span></h2>
+<div id="events" style="max-height:300px;overflow-y:auto"></div>
+</div>
+
+<div class="panel full-width">
+<h2>💬 메시지 <span class="count" id="msg-count"></span></h2>
+<div id="messages" style="max-height:300px;overflow-y:auto"></div>
+</div>
+
+</div>
+<script>
+var B=(function(){var p=location.pathname;if(p.endsWith('/'))p=p.slice(0,-1);return p})();
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function relTime(ts){var d=Date.now()-new Date(ts).getTime();if(d<60000)return Math.floor(d/1000)+'초 전';if(d<3600000)return Math.floor(d/60000)+'분 전';if(d<86400000)return Math.floor(d/3600000)+'시간 전';return Math.floor(d/86400000)+'일 전'}
+
+var STAGES=['backlog','research','spec','implement','review','done'];
+var STAGE_EMOJI={'backlog':'📥','research':'🔍','spec':'📐','implement':'⚡','review':'👀','revision':'🔄','done':'✅'};
+var EVENT_ICONS={'agent-registered':'🟢','agent-offline':'⚫','agent-spawned':'🤖','agent-stopped':'🛑','task-created':'📋','task-stage-advanced':'⏭️','task-revision':'🔄','task-updated':'📝','build-locked':'🔒','build-unlocked':'🔓','review-approved':'✅','review-rejected':'❌'};
+var EVENT_CLASS={'task-created':'task','task-stage-advanced':'task','task-revision':'review','task-updated':'task','review-approved':'review','review-rejected':'review','agent-registered':'agent','agent-offline':'agent','agent-spawned':'agent','agent-stopped':'agent','build-locked':'build','build-unlocked':'build'};
+
+var taskFilter='active';
+var allTasks=[];
+
+function filterTasks(f){
+  taskFilter=f;
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.toggle('active',t.dataset.filter===f)});
+  renderTasks(allTasks);
+}
+
+async function load(){
+  try{
+    var [agents,messages,tasks,build,events]=await Promise.all([
+      fetch(B+'/api/agents').then(function(r){return r.json()}),
+      fetch(B+'/api/messages?limit=30').then(function(r){return r.json()}),
+      fetch(B+'/api/tasks').then(function(r){return r.json()}),
+      fetch(B+'/api/build').then(function(r){return r.json()}),
+      fetch(B+'/api/events?days=1').then(function(r){return r.json()})
+    ]);
+    allTasks=tasks;
+    renderAgents(agents);
+    renderMessages(messages);
+    renderTasks(tasks);
+    renderBuild(build);
+    renderEvents(events);
+    renderScoreboard(agents);
+    document.getElementById('status').textContent='실시간';
+  }catch(e){document.getElementById('status').textContent='오프라인'}
+}
+
+function renderAgents(agents){
+  var el=document.getElementById('agents');
+  var online=agents.filter(function(a){return a.online}).length;
+  document.getElementById('agent-count').textContent=online+'/'+agents.length;
+  if(!agents.length){el.innerHTML='<div class="empty">팀원 없음</div>';return}
+  el.innerHTML=agents.map(function(a){
+    var levelLabel=['','Apprentice','Practitioner','Specialist','Master'][a.level||1];
+    return '<div class="agent-card">'+
+      '<span class="agent-dot '+(a.online?'online':'offline')+'"></span>'+
+      '<div class="agent-info">'+
+        '<div class="agent-name">'+esc(a.id)+'</div>'+
+        '<div class="agent-meta">'+
+          (a.project?esc(a.project)+' · ':'')+
+          (a.harnessVersion?esc(a.harnessVersion)+' · ':'')+
+          'sessions: '+(a.stats?a.stats.sessionsCount:0)+
+        '</div>'+
+      '</div>'+
+      '<div class="agent-badges">'+
+        '<span class="badge role">'+esc(a.role)+'</span>'+
+        '<span class="badge level">L'+(a.level||1)+'</span>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function renderTasks(tasks){
+  var el=document.getElementById('tasks');
+  var active=tasks.filter(function(t){return t.stage!=='done'});
+  var done=tasks.filter(function(t){return t.stage==='done'});
+  document.getElementById('task-count').textContent=active.length+' 진행 / '+done.length+' 완료';
+
+  var filtered=tasks;
+  if(taskFilter==='active')filtered=active;
+  else if(taskFilter==='done')filtered=done;
+
+  if(!filtered.length){el.innerHTML='<div class="empty">태스크 없음</div>';return}
+
+  el.innerHTML=filtered.map(function(t){
+    var stage=t.stage||'backlog';
+    var stageIdx=STAGES.indexOf(stage==='revision'?'implement':stage);
+    var revisions=(t.history||[]).filter(function(h){return h.to==='revision'});
+
+    // Pipeline visualization
+    var pipeline='<div class="task-pipeline">';
+    for(var i=0;i<STAGES.length;i++){
+      var cls='step';
+      if(i<stageIdx)cls+=' done';
+      else if(i===stageIdx&&stage!=='done')cls+=' active';
+      else if(stage==='done')cls+=' done';
+      pipeline+='<div class="'+cls+'"></div>';
+    }
+    pipeline+='</div>';
+
+    // History summary
+    var historyHtml='';
+    if(revisions.length>0){
+      historyHtml='<div class="task-history">🔄 revision '+revisions.length+'회';
+      var last=revisions[revisions.length-1];
+      if(last.reason)historyHtml+=' — <span class="rev-reason">'+esc(last.reason)+'</span>';
+      if(last.category)historyHtml+=' ['+esc(last.category)+']';
+      historyHtml+='</div>';
+    }
+
+    return '<div class="task-card '+esc(stage)+'">'+
+      '<div class="task-top">'+
+        '<span class="task-title">'+(STAGE_EMOJI[stage]||'')+' '+esc(t.title)+'</span>'+
+        '<span class="task-stage-badge '+esc(stage)+'">'+esc(stage)+'</span>'+
+      '</div>'+
+      '<div class="task-meta">'+
+        '<span>👤 '+(t.assignee?esc(t.assignee):'미할당')+'</span>'+
+        '<span>📎 '+esc(t.id)+'</span>'+
+        (t.project?'<span>📁 '+esc(t.project)+'</span>':'')+
+        '<span>⏱ '+relTime(t.updatedAt)+'</span>'+
+      '</div>'+
+      pipeline+
+      historyHtml+
+    '</div>';
+  }).join('');
+}
+
+function renderBuild(b){
+  var el=document.getElementById('build');
+  if(b.locked){
+    var mins=Math.round((Date.now()-new Date(b.lockedAt).getTime())/60000);
+    document.getElementById('build-label').textContent='잠금';
+    el.innerHTML='<div class="build-status locked">🔒 '+esc(b.lockedBy)+' ('+mins+'분) — '+esc(b.reason)+
+      (b.queue.length?' · 대기: '+esc(b.queue.join(', ')):'')+
+    '</div>';
+  }else{
+    document.getElementById('build-label').textContent='가능';
+    el.innerHTML='<div class="build-status free">🟢 빌드 가능</div>';
+  }
+}
+
+function renderMessages(msgs){
+  var el=document.getElementById('messages');
+  document.getElementById('msg-count').textContent=msgs.length;
+  if(!msgs.length){el.innerHTML='<div class="empty">메시지 없음</div>';return}
+  el.innerHTML=msgs.map(function(m){
+    var cls=m.from==='system'?'msg system':'msg';
+    var time=new Date(m.timestamp).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
+    return '<div class="'+cls+'">'+
+      '<span class="from">'+esc(m.from)+'</span>'+
+      (m.to!=='all'?' → <span style="color:#3fb950">'+esc(m.to)+'</span>':'')+
+      '<span class="time">'+time+'</span>'+
+      '<div class="content">'+esc(m.content)+'</div></div>';
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+function renderEvents(events){
+  var el=document.getElementById('events');
+  var recent=events.slice(-30).reverse();
+  document.getElementById('event-count').textContent=events.length;
+  if(!recent.length){el.innerHTML='<div class="empty">이벤트 없음</div>';return}
+  el.innerHTML=recent.map(function(e){
+    var icon=EVENT_ICONS[e.type]||'📌';
+    var cls=EVENT_CLASS[e.type]||'';
+    var desc=e.type.replace(/-/g,' ');
+    if(e.data.taskId)desc+=' ['+e.data.taskId+']';
+    if(e.data.from&&e.data.to)desc+=' '+e.data.from+'→'+e.data.to;
+    if(e.data.category)desc+=' ('+e.data.category+')';
+    if(e.data.role)desc+=' '+e.data.role;
+    return '<div class="event-item '+cls+'">'+
+      '<span class="event-icon">'+icon+'</span>'+
+      '<span class="event-text">'+esc(desc)+'</span>'+
+      '<span class="event-time">'+relTime(e.timestamp)+'</span>'+
+    '</div>';
+  }).join('');
+}
+
+function renderScoreboard(agents){
+  var el=document.getElementById('scoreboard');
+  var online=agents.filter(function(a){return a.online&&a.stats});
+  if(!online.length){el.innerHTML='<div class="empty">온라인 에이전트 없음</div>';return}
+
+  var totalTasks=0,totalRevisions=0,totalCompleted=0,totalSessions=0;
+  online.forEach(function(a){
+    if(a.stats){
+      totalTasks+=a.stats.tasksCompleted;
+      totalRevisions+=a.stats.totalRevisions;
+      totalCompleted+=a.stats.tasksCompleted;
+      totalSessions+=a.stats.sessionsCount;
+    }
+  });
+  var approvalRate=totalTasks>0?Math.round((totalTasks-totalRevisions)/Math.max(totalTasks,1)*100):0;
+
+  el.innerHTML='<div class="scorecard">'+
+    '<div class="stat-box"><div class="stat-value">'+totalCompleted+'</div><div class="stat-label">완료 태스크</div></div>'+
+    '<div class="stat-box"><div class="stat-value">'+totalRevisions+'</div><div class="stat-label">총 Revision</div></div>'+
+    '<div class="stat-box"><div class="stat-value">'+approvalRate+'%</div><div class="stat-label">승인율</div></div>'+
+    '<div class="stat-box"><div class="stat-value">'+totalSessions+'</div><div class="stat-label">총 세션</div></div>'+
+  '</div>';
+}
+
+// Clock
+setInterval(function(){
+  document.getElementById('clock').textContent=new Date().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+},1000);
+
+// SSE
+var es=new EventSource(B+'/events');
+es.addEventListener('message',function(){load()});
+es.addEventListener('agent-join',function(){load()});
+es.addEventListener('agent-leave',function(){load()});
+es.addEventListener('build-locked',function(){load()});
+es.addEventListener('build-unlocked',function(){load()});
+es.addEventListener('task-created',function(){load()});
+es.addEventListener('task-updated',function(){load()});
+es.addEventListener('task-stage-changed',function(){load()});
+es.addEventListener('agent-spawned',function(){load()});
+es.addEventListener('agent-stopped',function(){load()});
+es.addEventListener('agent-spawn-failed',function(){load()});
+
+load();
+setInterval(load,10000);
+</script>
+</body>
+</html>

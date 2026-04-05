@@ -32,7 +32,7 @@ import {
 } from "./store";
 
 import { spawn, type ChildProcess } from "child_process";
-import { existsSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from "fs";
 import { join } from "path";
 
 const PORT = 4000;
@@ -313,7 +313,7 @@ export function pollMessages(agentId: string): Message[] {
 
 Bun.serve({
   port: PORT,
-  hostname: "0.0.0.0",
+  hostname: "127.0.0.1",
   async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
@@ -748,7 +748,7 @@ Bun.serve({
   },
 });
 
-console.log(`🌐 Team Hub running on http://0.0.0.0:${PORT}`);
+console.log(`🌐 Team Hub running on http://127.0.0.1:${PORT}`);
 
 // ── Graceful Shutdown ──
 
@@ -769,12 +769,10 @@ process.on("SIGTERM", shutdown);
 
 // ── 대시보드 HTML ──
 
-const DASHBOARD_HTML = `<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Team Hub</title>
+const DASHBOARD_HTML = readFileSync(join(import.meta.dir, "dashboard.html"), "utf-8");
+
+// Old inline HTML removed — now loaded from dashboard.html
+const _OLD_INLINE_HTML = `<!DOCTYPE html>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e1e4e8;min-height:100vh}
@@ -832,15 +830,17 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 </div>
 </div>
 <script>
+// base URL 자동 감지 — /hub 경로에서도 동작하도록
+var B=(function(){var p=location.pathname;if(p.endsWith('/'))p=p.slice(0,-1);return p})();
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 async function load(){
   try{
     const[agents,messages,tasks,build]=await Promise.all([
-      fetch('/api/agents').then(r=>r.json()),
-      fetch('/api/messages?limit=30').then(r=>r.json()),
-      fetch('/api/tasks').then(r=>r.json()),
-      fetch('/api/build').then(r=>r.json())
+      fetch(B+'/api/agents').then(r=>r.json()),
+      fetch(B+'/api/messages?limit=30').then(r=>r.json()),
+      fetch(B+'/api/tasks').then(r=>r.json()),
+      fetch(B+'/api/build').then(r=>r.json())
     ]);
     renderAgents(agents);
     renderMessages(messages);
@@ -903,7 +903,7 @@ function renderBuild(b){
 }
 
 // SSE 실시간
-const es=new EventSource('/events');
+const es=new EventSource(B+'/events');
 es.onmessage=()=>load();
 es.addEventListener('message',()=>load());
 es.addEventListener('agent-join',()=>load());
