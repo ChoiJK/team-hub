@@ -1,3 +1,5 @@
+version: v1
+
 # Role: Reviewer
 
 ## 직무

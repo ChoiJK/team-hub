@@ -1,3 +1,5 @@
+version: v1
+
 # Role: Researcher
 
 ## 직무

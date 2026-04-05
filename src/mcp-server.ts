@@ -76,6 +76,72 @@ function loadProfile(): string {
   return sections;
 }
 
+// ── 역할별 도구 접근 제어 ──
+
+const ROLE_TOOLS: Record<string, string[]> = {
+  coder: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_lock", "build_unlock", "build_status",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  reviewer: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_status",
+    "task_list", "task_update", "task_advance", "task_revision", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  researcher: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  pm: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_status",
+    "task_create", "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  architect: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_status",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  designer: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  prototyper: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_lock", "build_unlock", "build_status",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+};
+
+// 허용된 도구인지 체크 (역할 미등록이면 전부 허용)
+function isToolAllowed(toolName: string): boolean {
+  const allowed = ROLE_TOOLS[AGENT_ROLE];
+  if (!allowed) return true;  // 정의 안 된 역할은 전부 허용
+  return allowed.includes(toolName);
+}
+
+// ── 하니스 버전 추출 ──
+
+function extractHarnessVersion(): string | null {
+  const profilesDir = join(import.meta.dir, "..", "profiles");
+  const rolePath = join(profilesDir, "roles", `${AGENT_ROLE}.md`);
+  try {
+    const content = readFileSync(rolePath, "utf-8");
+    const match = content.match(/^version:\s*(\S+)/m);
+    return match ? `${AGENT_ROLE}:${match[1]}` : null;
+  } catch { return null; }
+}
+
+const HARNESS_VERSION = extractHarnessVersion();
+
 // ── HTTP 헬퍼 ──
 
 async function hubFetch(path: string, options?: RequestInit) {
@@ -101,8 +167,8 @@ const mcp = new Server(
 
 // ── 도구 정의 ──
 
-mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+mcp.setRequestHandler(ListToolsRequestSchema, async () => {
+  const allTools = [
     // 커뮤니케이션
     {
       name: "team_send",
@@ -219,6 +285,11 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
         properties: {
           id: { type: "string", description: "태스크 ID" },
           reason: { type: "string", description: "반려 사유" },
+          category: {
+            type: "string",
+            enum: ["bug", "style", "architecture", "missing-test", "performance", "spec-mismatch", "other"],
+            description: "반려 분류 (bug/style/architecture/missing-test/performance/spec-mismatch/other)",
+          },
         },
         required: ["id", "reason"],
       },
@@ -257,14 +328,26 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
       description: "저장된 메모리 전체 보기",
       inputSchema: { type: "object" as const, properties: {} },
     },
-  ],
-}));
+  ];
+
+  return { tools: allTools.filter((t) => isToolAllowed(t.name)) };
+});
 
 // ── 도구 실행 ──
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const { name, arguments: args } = req.params;
   const a = args ?? {};
+
+  // 역할별 접근 제어
+  if (!isToolAllowed(name)) {
+    return {
+      content: [{
+        type: "text",
+        text: `⛔ ${AGENT_ROLE} 역할은 ${name} 도구를 사용할 수 없습니다.`,
+      }],
+    };
+  }
 
   switch (name) {
     case "team_send": {
@@ -424,7 +507,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       }
       const result = await hubFetch(`/api/tasks/${a.id}/revision`, {
         method: "PUT",
-        body: JSON.stringify({ by: AGENT_ID, reason: a.reason }),
+        body: JSON.stringify({ by: AGENT_ID, reason: a.reason, category: a.category ?? "other" }),
       });
       if (result.error) {
         return { content: [{ type: "text", text: `❌ ${result.error}` }] };
@@ -484,10 +567,16 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 // ── 에이전트 등록 + 메시지 폴링 루프 ──
 
 async function init() {
-  // Hub에 등록
+  // Hub에 등록 (하니스 버전 + 페르소나 포함)
   await hubFetch("/api/agents/register", {
     method: "POST",
-    body: JSON.stringify({ id: AGENT_ID, role: AGENT_ROLE, project: PROJECT }),
+    body: JSON.stringify({
+      id: AGENT_ID,
+      role: AGENT_ROLE,
+      project: PROJECT,
+      harnessVersion: HARNESS_VERSION,
+      persona: AGENT_PERSONA || null,
+    }),
   });
 
   // 5초마다 메시지 폴링 → Claude Code 세션에 푸시

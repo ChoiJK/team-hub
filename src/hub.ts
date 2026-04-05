@@ -22,6 +22,9 @@ import {
   revisionTask,
   getTaskById,
   STAGE_ROLE_MAP,
+  logEvent,
+  getEvents,
+  getAgentScorecard,
   type Message,
   type Task,
   type AdvanceResult,
@@ -351,8 +354,11 @@ Bun.serve({
       }
 
       if (path === "/api/agents/register" && method === "POST") {
-        const { id, role, project } = await req.json();
-        const agent = registerAgent(id, role, project ?? null);
+        const { id, role, project, harnessVersion, persona } = await req.json();
+        const agent = registerAgent(id, role, project ?? null, {
+          harnessVersion: harnessVersion ?? undefined,
+          persona: persona ?? undefined,
+        });
         broadcastSSE("agent-join", agent);
         return Response.json(agent, { headers });
       }
@@ -367,6 +373,25 @@ Bun.serve({
       if (path.startsWith("/api/agents/") && path.endsWith("/memory") && method === "GET") {
         const id = path.split("/")[3];
         return Response.json(listMemory(id), { headers });
+      }
+
+      // GET /api/agents/:id/scorecard — 에이전트 스코어카드
+      if (path.match(/^\/api\/agents\/[^/]+\/scorecard$/) && method === "GET") {
+        const id = path.split("/")[3];
+        const scorecard = getAgentScorecard(id);
+        if (!scorecard) return Response.json({ error: "Agent not found" }, { status: 404, headers });
+        return Response.json(scorecard, { headers });
+      }
+
+      // GET /api/events — 이벤트 로그 조회
+      if (path === "/api/events" && method === "GET") {
+        const days = parseInt(url.searchParams.get("days") ?? "7");
+        const type = url.searchParams.get("type") ?? undefined;
+        let events = getEvents(days);
+        if (type) {
+          events = events.filter((e) => e.type === type);
+        }
+        return Response.json(events, { headers });
       }
 
       // PUT /api/agents/:id/memory — 메모리 저장
@@ -472,7 +497,7 @@ Bun.serve({
         const revisionMatch = path.match(/^\/api\/tasks\/([^/]+)\/revision$/);
         if (revisionMatch && method === "PUT") {
           const taskId = revisionMatch[1];
-          const { by, reason } = await req.json();
+          const { by, reason, category } = await req.json();
 
           if (!reason) {
             return Response.json(
@@ -481,7 +506,7 @@ Bun.serve({
             );
           }
 
-          const result = revisionTask(taskId, by ?? "system", reason);
+          const result = revisionTask(taskId, by ?? "system", reason, category);
           if (!result.success) {
             const statusMap = {
               not_found: 404,
@@ -627,6 +652,7 @@ Bun.serve({
           const agentProc = spawnAgent(agentId, role, project, worktreePath, prompt, model);
           const agent = registerAgent(agentId, role, project);
 
+          logEvent("agent-spawned", agentId, project, { role, pid: agentProc.pid, worktreePath });
           broadcastSSE("agent-spawned", { ...agent, pid: agentProc.pid, worktreePath });
 
           addMessage({
@@ -654,7 +680,8 @@ Bun.serve({
         if (stopMatch && method === "POST") {
           const [, project, agentId] = stopMatch;
 
-          const stopped = stopAgent(agentId);
+    const stopped = stopAgent(agentId);
+          logEvent("agent-stopped", agentId, project, {});
           if (!stopped) {
             return Response.json(
               { error: `Agent ${agentId} is not running` },

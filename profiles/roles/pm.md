@@ -1,3 +1,5 @@
+version: v1
+
 # Role: PM (Project Manager)
 
 ## 직무
