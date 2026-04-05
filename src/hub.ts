@@ -153,15 +153,14 @@ function spawnAgent(
   initialPrompt: string,
   opts?: { model?: string; persona?: string; rules?: string }
 ): AgentProcess {
-  // claude 실행 인자 구성
+  // claude 실행 인자 구성 — 인터랙티브 모드 (상주, 채널 연결)
   const claudeArgs = [
     "--permission-mode", "bypassPermissions",
-    "--channels", "server:team-hub",
   ];
+  // --channels는 bat 파일에서 별도 처리 (인자 파싱 이슈 방지)
   if (opts?.model) {
     claudeArgs.push("--model", opts.model);
   }
-  claudeArgs.push("-p", initialPrompt);
 
   // .bat 래퍼 생성 — 새 터미널 창에서 실행 + 종료 시 Hub 알림
   const batPath = join(worktreePath, `_run-${agentId}.bat`);
@@ -178,10 +177,11 @@ function spawnAgent(
     `title [${role}] ${agentId}`,
     `cd /d "${worktreePath.replace(/\//g, "\\")}"`,
     ...envLines,
-    `claude ${claudeArgs.join(" ")}`,
+    `claude ${claudeArgs.join(" ")} --dangerously-load-development-channels server:team-hub`,
     `echo.`,
     `echo === Agent ${agentId} exited ===`,
     `curl -s -X POST http://127.0.0.1:${PORT}/api/agents/offline -H "Content-Type: application/json" -d "{\\"id\\":\\"${agentId}\\"}" >nul 2>&1`,
+    `pause`,
   ].join("\r\n") + "\r\n";
   writeFileSync(batPath, batContent, "utf-8");
 
@@ -670,9 +670,22 @@ Bun.serve({
           addMessage({
             from: "system",
             to: "all",
-            content: `🤖 ${role} 에이전트 스폰: ${agentId} (PID: ${agentProc.pid})`,
+            content: `🤖 ${role} 에이전트 스폰: ${agentId}`,
             project,
           });
+
+          // 초기 프롬프트를 채널 메시지로 전달 (에이전트가 MCP 연결 후 수신)
+          if (prompt) {
+            setTimeout(() => {
+              const msg = addMessage({
+                from: "system",
+                to: agentId,
+                content: prompt,
+                project,
+              });
+              pushToAgent(agentId, msg);
+            }, 5000); // 에이전트 MCP 연결 대기
+          }
 
           return Response.json(
             {
