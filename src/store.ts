@@ -57,6 +57,8 @@ export interface TaskHistoryEntry {
   timestamp: string;
 }
 
+export type PipelineType = "feature" | "bugfix" | "audit" | "refactor" | "research" | "design";
+
 export interface Task {
   id: string;
   title: string;
@@ -69,6 +71,7 @@ export interface Task {
   updatedAt: string;
   // Stage machine 필드
   stage?: TaskStage;
+  pipeline?: PipelineType;
   dependsOn?: string[];
   branch?: string;
   lastCommit?: string;
@@ -77,6 +80,20 @@ export interface Task {
 
 // ── 스테이지 머신 ──
 
+// 파이프라인별 스테이지 순서 (backlog는 공통 시작점, 명시하지 않음)
+export const PIPELINES: Record<PipelineType, TaskStage[]> = {
+  feature:  ["backlog", "research", "spec", "implement", "review", "qa", "done"],
+  bugfix:   ["backlog", "implement", "review", "qa", "done"],
+  audit:    ["backlog", "audit", "implement", "review", "qa", "done"],
+  refactor: ["backlog", "spec", "implement", "review", "done"],
+  research: ["backlog", "research", "done"],
+  design:   ["backlog", "spec", "implement", "review", "done"],
+};
+
+// 기본 파이프라인 (pipeline 미지정 태스크용)
+const DEFAULT_PIPELINE: PipelineType = "feature";
+
+// 레거시 호환: 단일 STAGE_FLOW (pipeline 미지정 시 fallback)
 export const STAGE_FLOW: Partial<Record<TaskStage, TaskStage>> = {
   backlog: "research",
   research: "spec",
@@ -97,6 +114,15 @@ export const STAGE_ROLE_MAP: Partial<Record<TaskStage, string>> = {
   qa: "qa",
   audit: "auditor",
 };
+
+// 파이프라인에서 다음 스테이지 결정
+function getNextStage(currentStage: TaskStage, pipeline: PipelineType): TaskStage | null {
+  if (currentStage === "revision") return "review";
+  const stages = PIPELINES[pipeline];
+  const idx = stages.indexOf(currentStage);
+  if (idx === -1 || idx >= stages.length - 1) return null;
+  return stages[idx + 1];
+}
 
 export interface BuildLock {
   locked: boolean;
@@ -384,7 +410,8 @@ export function createTask(
   title: string,
   description: string,
   createdBy: string,
-  project: string | null
+  project: string | null,
+  pipeline?: PipelineType
 ): Task {
   const tasks = getTasks();
   const task: Task = {
@@ -393,6 +420,7 @@ export function createTask(
     description,
     status: "todo",
     stage: "backlog",
+    pipeline: pipeline ?? "feature",
     assignee: null,
     project,
     createdBy,
@@ -434,8 +462,9 @@ export function advanceTaskStage(
   if (!task) return { success: false, error: "not_found" };
 
   const currentStage = task.stage ?? "backlog";
+  const pipeline = task.pipeline ?? DEFAULT_PIPELINE;
 
-  const nextStage = STAGE_FLOW[currentStage];
+  const nextStage = getNextStage(currentStage, pipeline);
   if (!nextStage) return { success: false, error: "already_done" };
 
   const nextRole = STAGE_ROLE_MAP[nextStage] ?? "pm";
@@ -513,12 +542,12 @@ export function revisionTask(
   const task = getTaskById(id);
   if (!task) return { success: false, error: "not_found" };
 
-  if (task.stage !== "review") {
+  if (task.stage !== "review" && task.stage !== "qa") {
     return { success: false, error: "invalid_stage" };
   }
 
   const historyEntry: TaskHistoryEntry = {
-    from: "review",
+    from: task.stage,
     to: "revision",
     by,
     reason,

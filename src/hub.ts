@@ -454,8 +454,8 @@ Bun.serve({
       }
 
       if (path === "/api/tasks" && method === "POST") {
-        const { title, description, createdBy, project } = await req.json();
-        const task = createTask(title, description, createdBy, project ?? null);
+        const { title, description, createdBy, project, pipeline } = await req.json();
+        const task = createTask(title, description, createdBy, project ?? null, pipeline);
         broadcastSSE("task-created", task);
         return Response.json(task, { headers });
       }

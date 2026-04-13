@@ -255,12 +255,17 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => {
     // 태스크
     {
       name: "task_create",
-      description: "새 태스크 생성",
+      description: "새 태스크 생성. pipeline으로 워크플로우 지정 (feature/bugfix/audit/refactor/research/design)",
       inputSchema: {
         type: "object" as const,
         properties: {
           title: { type: "string", description: "태스크 제목" },
           description: { type: "string", description: "태스크 설명" },
+          pipeline: {
+            type: "string",
+            enum: ["feature", "bugfix", "audit", "refactor", "research", "design"],
+            description: "파이프라인 타입 (기본: feature)",
+          },
         },
         required: ["title"],
       },
@@ -290,7 +295,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => {
     // 스테이지 머신
     {
       name: "task_advance",
-      description: "태스크를 다음 스테이지로 전환 (backlog→research→spec→implement→review→done). 다음 역할 에이전트에게 자동 알림/스폰.",
+      description: "태스크를 다음 스테이지로 전환. 파이프라인 타입에 따라 경로가 다름 (feature: research→spec→implement→review→qa→done, bugfix: implement→review→qa→done 등). 다음 역할 에이전트에게 자동 알림/스폰.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -301,7 +306,7 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => {
     },
     {
       name: "task_revision",
-      description: "태스크를 revision 스테이지로 전환 (리뷰 반려). coder에게 자동 재할당.",
+      description: "태스크를 revision 스테이지로 전환 (리뷰/QA 반려). review 또는 qa 스테이지에서 호출 가능. coder에게 자동 재할당.",
       inputSchema: {
         type: "object" as const,
         properties: {
@@ -470,6 +475,7 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
       if (!a.title) {
         return { content: [{ type: "text", text: "❌ title 필수" }] };
       }
+      const pipeline = a.pipeline ?? "feature";
       const task = await hubFetch("/api/tasks", {
         method: "POST",
         body: JSON.stringify({
@@ -477,9 +483,10 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
           description: a.description ?? "",
           createdBy: AGENT_ID,
           project: PROJECT,
+          pipeline,
         }),
       });
-      return { content: [{ type: "text", text: `📋 태스크 생성: ${task.title} (${task.id})` }] };
+      return { content: [{ type: "text", text: `📋 태스크 생성: ${task.title} (${task.id}) [${pipeline}]` }] };
     }
 
     case "task_list": {
