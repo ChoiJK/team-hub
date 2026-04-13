@@ -119,6 +119,28 @@ const ROLE_TOOLS: Record<string, string[]> = {
     "task_list", "task_update", "task_advance", "task_my_tasks",
     "memory_store", "memory_retrieve", "memory_list",
   ],
+  auditor: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_status",
+    "task_create", "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  qa: [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "build_lock", "build_unlock", "build_status",
+    "task_list", "task_update", "task_advance", "task_revision", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  "ux-researcher": [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
+  "ux-strategist": [
+    "team_send", "team_broadcast", "team_members", "team_history",
+    "task_create", "task_list", "task_update", "task_advance", "task_my_tasks",
+    "memory_store", "memory_retrieve", "memory_list",
+  ],
 };
 
 // 허용된 도구인지 체크 (역할 미등록이면 전부 허용)

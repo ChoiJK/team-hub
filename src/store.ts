@@ -43,9 +43,9 @@ export interface Message {
   project: string | null;
 }
 
-export type TaskStage = "backlog" | "research" | "spec" | "implement" | "review" | "revision" | "done";
+export type TaskStage = "backlog" | "research" | "spec" | "implement" | "review" | "qa" | "audit" | "revision" | "done";
 
-export type ReviewCategory = "bug" | "style" | "architecture" | "missing-test" | "performance" | "spec-mismatch" | "other";
+export type ReviewCategory = "bug" | "style" | "architecture" | "missing-test" | "performance" | "spec-mismatch" | "test-failure" | "regression" | "build-failure" | "type-error" | "lint-error" | "other";
 
 export interface TaskHistoryEntry {
   from: string;
@@ -82,7 +82,9 @@ export const STAGE_FLOW: Partial<Record<TaskStage, TaskStage>> = {
   research: "spec",
   spec: "implement",
   implement: "review",
-  review: "done",
+  review: "qa",
+  qa: "done",
+  audit: "implement",
   revision: "review",
 };
 
@@ -92,6 +94,8 @@ export const STAGE_ROLE_MAP: Partial<Record<TaskStage, string>> = {
   spec: "architect",
   implement: "coder",
   review: "reviewer",
+  qa: "qa",
+  audit: "auditor",
 };
 
 export interface BuildLock {
